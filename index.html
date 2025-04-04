@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>管道保温层热阻计算器</title>
+    <!-- 引入Element Plus样式 -->
+    <link rel="stylesheet" href="https://unpkg.com/element-plus/dist/index.css">
+    <!-- 引入Element Plus图标样式 -->
+    <link rel="stylesheet" href="//unpkg.com/@element-plus/icons-vue@2.1.0/dist/index.css">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="app">
+        <el-container>
+            <el-header>
+                <div class="header-content">
+                    <h1>热阻和经济性快速计算表</h1>
+                    <div class="header-buttons">
+                        <el-button type="primary" @click="showHelp">帮助</el-button>
+                        <el-button type="success" @click="refreshPage">刷新</el-button>
+                        <el-button type="info" @click="goBack">返回</el-button>
+                    </div>
+                </div>
+            </el-header>
+            
+            <el-main>
+                <div id="calculator">
+                    <el-row :gutter="10">
+                        <!-- 左侧区域：热阻经济性计算 -->
+                        <el-col :xs="24" :sm="24" :md="24" :lg="8">
+                            <div class="calculation-section">
+                                <el-card class="calculation-card">
+                                    <template #header>
+                                        <div class="card-header">
+                                            <h2>热阻经济性计算</h2>
+                                        </div>
+                                    </template>
+                                    
+                                    <!-- 管道内径和长度输入区域 -->
+                                    <div class="pipe-dimensions">
+                                        <div class="input-group">
+                                            <span class="input-label">管道内径：</span>
+                                            <el-input v-model="pipeInnerDiameter" placeholder="请输入管道内径">
+                                                <template #append>mm</template>
+                                            </el-input>
+                                        </div>
+                                        <div class="input-group">
+                                            <span class="input-label">管道长度：</span>
+                                            <el-input v-model="pipeLength" placeholder="请输入管道长度">
+                                                <template #append>m</template>
+                                            </el-input>
+                                        </div>
+                                    </div>
+
+                                    <!-- 材料选择和厚度输入区域 -->
+                                    <div class="material-params">
+                                        <div v-for="(layer, index) in layers" :key="index" class="material-input-group">
+                                            <span class="thickness-label">{{ index === 0 ? '最内层' : index === 3 ? '最外层' : '第' + (index + 1) + '层' }}</span>
+                                            <el-select 
+                                                v-model="layer.material" 
+                                                filterable 
+                                                clearable 
+                                                placeholder="选择材料"
+                                                class="material-select"
+                                                @change="handleMaterialChange">
+                                                <el-option
+                                                    v-for="item in materials"
+                                                    :key="item.name"
+                                                    :label="item.name"
+                                                    :value="item.name">
+                                                </el-option>
+                                            </el-select>
+                                            <el-input 
+                                                v-model="layer.thickness" 
+                                                class="thickness-input"
+                                                placeholder="厚度">
+                                                <template #append>mm</template>
+                                            </el-input>
+                                        </div>
+                                    </div>
+
+                                    <!-- 计算结果表格 -->
+                                    <div class="calculation-results">
+                                        <!-- 详细数据表格 -->
+                                        <el-table :data="calculationResults.layers" border style="width: 100%" size="small">
+                                            <el-table-column prop="layer" label="保温层" width="80" />
+                                            <el-table-column prop="material" label="材料名称" min-width="120">
+                                                <template #default="scope">
+                                                    <div>{{ scope.row.material }}</div>
+                                                    <div class="material-spec">{{ scope.row.materialSpec }}</div>
+                                                </template>
+                                            </el-table-column>
+                                            <el-table-column prop="thermalConductivity" label="导热系数" width="100">
+                                                <template #default="scope">
+                                                    {{ scope.row.thermalConductivity }} W/(m·K)
+                                                </template>
+                                            </el-table-column>
+                                            <el-table-column label="直径(mm)" width="120">
+                                                <template #default="scope">
+                                                    {{ scope.row.innerDiameter }} → {{ scope.row.outerDiameter }}
+                                                </template>
+                                            </el-table-column>
+                                            <el-table-column prop="quantity" label="用量" width="120">
+                                                <template #default="scope">
+                                                    {{ scope.row.quantity }} {{ scope.row.unit }}
+                                                </template>
+                                            </el-table-column>
+                                            <el-table-column prop="costPerformance" label="性价比" width="120">
+                                                <template #default="scope">
+                                                    {{ scope.row.costPerformance }} (K/W)/万元
+                                                </template>
+                                            </el-table-column>
+                                        </el-table>
+
+                                        <!-- 总计结果 -->
+                                        <div class="results-summary">
+                                            <el-card class="total-results" shadow="never">
+                                                <el-descriptions :column="1" border>
+                                                    <el-descriptions-item label="总热阻">
+                                                        <span class="highlight-value">{{ calculationResults.totalResistance }}</span> K/W
+                                                    </el-descriptions-item>
+                                                    <el-descriptions-item label="总成本">
+                                                        <span class="highlight-value">{{ calculationResults.totalCost }}</span> 元
+                                                    </el-descriptions-item>
+                                                    <el-descriptions-item label="综合性价比">
+                                                        <span class="highlight-value">{{ calculationResults.costPerformance }}</span> (K/W)/万元
+                                                    </el-descriptions-item>
+                                                </el-descriptions>
+                                            </el-card>
+                                        </div>
+
+                                        <!-- 图表展示区域 -->
+                                        <div ref="chartRef" class="chart-container"></div>
+                                    </div>
+                                </el-card>
+                            </div>
+                        </el-col>
+                        
+                        <!-- 中间区域：示意图 -->
+                        <el-col :xs="24" :sm="24" :md="24" :lg="8">
+                            <div class="diagram-section">
+                                <el-card class="diagram-card">
+                                    <template #header>
+                                        <div class="card-header">
+                                            <h2>示意图</h2>
+                                        </div>
+                                    </template>
+                                    
+                                    <!-- SVG示意图容器 -->
+                                    <div class="diagram-container">
+                                        <div id="svg-container" ref="svgContainer"></div>
+                                    </div>
+                                    
+                                    <!-- 示意图说明 -->
+                                    <div class="diagram-description">
+                                        <h3>示意图说明</h3>
+                                        <p>本示意图展示了管道保温层的结构：</p>
+                                        <ul>
+                                            <li>内层：直接接触管道表面</li>
+                                            <li>中间层：主要保温层，提供热阻</li>
+                                            <li>外层：保护层，防止外部环境侵蚀</li>
+                                        </ul>
+                                        <p>点击各层可查看详细信息，支持拖动和缩放操作。</p>
+                                    </div>
+                                </el-card>
+                                <div class="baseline-schemes">
+                                    <h3>基准方案</h3>
+                                    <div class="scheme-buttons">
+                                        <el-tooltip
+                                            content="方案一：第一层纳米气凝胶(20mm)，第二层高温玻璃棉(100mm)，第三层钠镁管保护层(2mm)"
+                                            placement="top">
+                                            <el-button type="primary" @click="applyScheme1">方案一</el-button>
+                                        </el-tooltip>
+                                        <el-tooltip
+                                            content="方案二：第一层纳米气凝胶(10mm)，第二层高温玻璃棉(50mm)，第三层钠镁管保护层(70mm)，第四层钠镁管保护层(5mm)"
+                                            placement="top">
+                                            <el-button type="primary" @click="applyScheme2">方案二</el-button>
+                                        </el-tooltip>
+                                        <el-tooltip
+                                            content="方案三：第一层纳米气凝胶(10mm)，第二层硅酸铝针刺毯(50mm)，第三层钠镁管保护层(70mm)，第四层钠镁管保护层(2mm)"
+                                            placement="top">
+                                            <el-button type="primary" @click="applyScheme3">方案三</el-button>
+                                        </el-tooltip>
+                                        <el-tooltip
+                                            content="方案四：第一层纳米气凝胶(10mm)，第二层硅酸铝针刺毯(50mm)，第三层硅酸铝针刺毯(50mm)，第四层钠镁管保护层(2mm)"
+                                            placement="top">
+                                            <el-button type="primary" @click="applyScheme4">方案四</el-button>
+                                        </el-tooltip>
+                                    </div>
+                                </div>
+                            </div>
+                        </el-col>
+                        
+                        <!-- 右侧区域：给定工况计算 -->
+                        <el-col :xs="24" :sm="24" :md="24" :lg="8">
+                            <div class="condition-section">
+                                <el-card class="condition-card">
+                                    <template #header>
+                                        <div class="card-header">
+                                            <h2>给定工况计算</h2>
+                                        </div>
+                                    </template>
+                                    
+                                    <!-- 输入参数 -->
+                                    <div class="condition-inputs">
+                                        <div class="input-row">
+                                            <span class="input-label">蒸汽温度：</span>
+                                            <el-input v-model="innerTemp" placeholder="请输入蒸汽温度">
+                                                <template #append>°C</template>
+                                            </el-input>
+                                        </div>
+                                        <div class="input-row">
+                                            <span class="input-label">环境温度：</span>
+                                            <el-input v-model="envTemp" placeholder="请输入环境温度">
+                                                <template #append>°C</template>
+                                            </el-input>
+                                        </div>
+                                        <div class="input-row">
+                                            <span class="input-label">外对流传热系数：</span>
+                                            <el-input v-model="heatTransferCoeff" placeholder="请输入外对流传热系数">
+                                                <template #append>W/(m²·K)</template>
+                                            </el-input>
+                                        </div>
+                                    </div>
+
+                                    <!-- 计算结果 -->
+                                    <div v-if="temperatureResults" class="results-container">
+                                        <h3>基础参数</h3>
+                                        <!-- 基础参数表格 - 第一行 -->
+                                        <el-table :data="[{
+                                            pipeOuterDiameter: temperatureResults.pipeOuterDiameter,
+                                            surfaceArea: temperatureResults.surfaceArea,
+                                            externalResistance: temperatureResults.externalResistance
+                                        }]" border style="width: 100%" size="small" class="basic-params-table">
+                                            <el-table-column label="管道外径" align="center">
+                                                <template #default="scope">
+                                                    <span>{{ scope.row.pipeOuterDiameter }}</span>
+                                                    <span class="unit">m</span>
+                                                </template>
+                                            </el-table-column>
+                                            <el-table-column label="外表面积" align="center">
+                                                <template #default="scope">
+                                                    <span>{{ scope.row.surfaceArea }}</span>
+                                                    <span class="unit">m²</span>
+                                                </template>
+                                            </el-table-column>
+                                            <el-table-column label="外部对流热阻" align="center">
+                                                <template #default="scope">
+                                                    <span>{{ scope.row.externalResistance }}</span>
+                                                    <span class="unit">K/W</span>
+                                                </template>
+                                            </el-table-column>
+                                        </el-table>
+
+                                        <!-- 基础参数表格 - 第二行 -->
+                                        <el-table :data="[{
+                                            totalResistance: temperatureResults.totalResistance,
+                                            heatFlux: temperatureResults.heatFlux
+                                        }]" border style="width: 100%" size="small" class="basic-params-table">
+                                            <el-table-column label="总热阻" align="center">
+                                                <template #default="scope">
+                                                    <span>{{ scope.row.totalResistance }}</span>
+                                                    <span class="unit">K/W</span>
+                                                </template>
+                                            </el-table-column>
+                                            <el-table-column label="散热功率" align="center">
+                                                <template #default="scope">
+                                                    <span>{{ scope.row.heatFlux }}</span>
+                                                    <span class="unit">W</span>
+                                                </template>
+                                            </el-table-column>
+                                        </el-table>
+
+                                        <h3 style="margin-top: 20px">温度分布</h3>
+                                        <!-- 温度分布表格 -->
+                                        <el-table :data="temperatureResults.layers" border style="width: 100%" size="small">
+                                            <el-table-column prop="layer" label="保温层" width="100" align="center" />
+                                            <el-table-column label="内层温度" align="center">
+                                                <template #default="scope">
+                                                    <span>{{ scope.row.innerTemp }}</span>
+                                                    <span class="unit">°C</span>
+                                                </template>
+                                            </el-table-column>
+                                            <el-table-column label="外层温度" align="center">
+                                                <template #default="scope">
+                                                    <span>{{ scope.row.outerTemp }}</span>
+                                                    <span class="unit">°C</span>
+                                                </template>
+                                            </el-table-column>
+                                            <el-table-column label="温差" align="center">
+                                                <template #default="scope">
+                                                    <span>{{ scope.row.tempDiff }}</span>
+                                                    <span class="unit">°C</span>
+                                                </template>
+                                            </el-table-column>
+                                            <el-table-column label="平均温度" align="center">
+                                                <template #default="scope">
+                                                    <span>{{ scope.row.avgTemp }}</span>
+                                                    <span class="unit">°C</span>
+                                                </template>
+                                            </el-table-column>
+                                        </el-table>
+                                    </div>
+                                    <div class="temperature-visualization">
+                                        <h3>温度分布示意图</h3>
+                                        <div id="temperatureChart" style="width: 100%; height: 300px;"></div>
+                                    </div>
+                                </el-card>
+                            </div>
+                        </el-col>
+                    </el-row>
+                </div>
+            </el-main>
+            
+            <el-footer>
+                <p>计算表中并未考虑对流、辐射的影响，特别是忽略了铝箔反辐射层、纳米气囊层对辐射、对流的削弱作用，因而计算与实际情况可能存在一定偏差</p>
+            </el-footer>
+        </el-container>
+    </div>
+
+    <!-- 引入依赖库 -->
+    <script src="https://unpkg.com/vue@3.3.4/dist/vue.global.prod.js"></script>
+    <script src="https://unpkg.com/element-plus"></script>
+    <script src="https://unpkg.com/@element-plus/icons-vue"></script>
+    <script src="https://unpkg.com/element-plus/dist/locale/zh-cn.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/svg.js/3.1.2/svg.min.js"></script>
+    
+    <!-- 引入应用代码 -->
+    <script type="module" src="data.js"></script>
+    <script type="module" src="script.js"></script>
+</body>
+</html> 
